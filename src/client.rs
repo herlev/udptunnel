@@ -10,7 +10,7 @@ use tracing::{debug, error, info};
 
 use crate::{Command, Msg, Request, Response};
 
-// const KEEPALIVE: u32 = 25;
+const KEEPALIVE_DURATION: Duration = Duration::from_secs(25);
 // TODO: how do I detect if hole punch is closed?
 // answer keep alive with either success or another keepalive?
 // if there has been no traffic for some time?
@@ -63,6 +63,13 @@ pub fn client(server_endpoint: SocketAddr, server_forward_port: u16, forward_to_
     let msg = r.recv().unwrap();
     let bytes = config.serialize(&msg).unwrap();
     tx_socket.send(&bytes).unwrap();
+  });
+
+  let keepalive_sender = s.clone();
+  std::thread::spawn(move || loop {
+    std::thread::sleep(KEEPALIVE_DURATION);
+    debug!("Sending keepalive");
+    keepalive_sender.send(Msg::new(Command::Keepalive)).unwrap();
   });
 
   let mut buf = [0; 2048];

@@ -6,7 +6,7 @@ use std::{
   sync::mpsc,
   time::Instant,
 };
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 type Client = SocketAddr;
 type MainWriteChannel = mpsc::Sender<(Client, Msg)>;
@@ -68,6 +68,7 @@ fn handle_request_command(
     tx_channel: s,
   };
   clients.insert(client, client_info);
+  info!("New client {client} authenticated");
 }
 
 fn handle_msg(clients: &mut Clients, client: SocketAddr, msg: Msg, main_w_tx_channel: &MainWriteChannel) {
@@ -81,17 +82,18 @@ fn handle_msg(clients: &mut Clients, client: SocketAddr, msg: Msg, main_w_tx_cha
           client_info.tx_channel.send((src, payload)).unwrap();
           client_info.last_used = Instant::now();
         }
-        None => error!("received udp payload from unauthenticated client {client:?}"),
+        None => error!("Received udp payload from unauthenticated client {client}"),
       };
     }
     crate::Command::Request(req) => handle_request_command(clients, client, req, main_w_tx_channel),
     crate::Command::Keepalive => match clients.get_mut(&client) {
       Some(client_info) => {
         client_info.last_used = Instant::now();
+        debug!("Received keepalive from client {client}");
       }
-      None => error!("received keepalive from unauthenticated client {client:?}"),
+      None => error!("Received keepalive from unauthenticated client {client}"),
     },
-    crate::Command::Response(_) => error!("received response from client"),
+    crate::Command::Response(_) => error!("Received response from client"),
   };
 }
 
@@ -136,7 +138,6 @@ fn main_r(rx_socket: UdpSocket, main_w_tx_channel: MainWriteChannel) {
   loop {
     let (n, src) = rx_socket.recv_from(&mut buf).unwrap();
     assert!(n < 2048, "increase buffer size");
-    info!("Got new connection from {}:{}", src.ip(), src.port());
     let decoded: bincode::Result<Msg> = config.deserialize(&buf[0..n]);
     match decoded {
       Err(_e) => warn!("got invalid data from client"),
